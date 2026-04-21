@@ -11,30 +11,75 @@ st.set_page_config(
 )
 
 # -------------------------
-# LOAD DATA
+# CUSTOM STYLING
 # -------------------------
-bom_cluster_rate = pd.read_csv("bom_cluster_rate.csv")
-cluster_pareto = pd.read_csv("cluster_pareto.csv")
-shift_cluster_rate = pd.read_csv("shift_cluster_rate.csv")
+st.markdown("""
+<style>
+.block-container {
+    padding-top: 1rem;
+}
+h1, h2, h3 {
+    color: #003A8F;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # -------------------------
-# COLORS (Greaves style)
+# LOAD DATA
 # -------------------------
-PRIMARY_BLUE = "#003A8F"
-ACCENT_BLUE = "#1F77B4"
-ALERT_RED = "#D62728"
-NEUTRAL_GREY = "#6C757D"
+@st.cache_data
+def load_data():
+    bom = pd.read_csv("bom_cluster_rate.csv")
+    cluster = pd.read_csv("cluster_pareto.csv")
+    shift = pd.read_csv("shift_cluster_rate.csv")
+    return bom, cluster, shift
+
+bom_cluster_rate, cluster_pareto, shift_cluster_rate = load_data()
+
+# -------------------------
+# SIDEBAR FILTERS
+# -------------------------
+st.sidebar.header("Filters")
+
+selected_boms = st.sidebar.multiselect(
+    "Select BOM",
+    options=bom_cluster_rate["BOM"].unique(),
+    default=bom_cluster_rate["BOM"].unique()
+)
+
+selected_clusters = st.sidebar.multiselect(
+    "Select Failure Modes",
+    options=cluster_pareto["Cluster_Name"].unique(),
+    default=cluster_pareto["Cluster_Name"].unique()
+)
+
+# -------------------------
+# APPLY FILTERS
+# -------------------------
+bom_filtered = bom_cluster_rate[
+    bom_cluster_rate["BOM"].isin(selected_boms)
+]
+
+cluster_filtered = cluster_pareto[
+    cluster_pareto["Cluster_Name"].isin(selected_clusters)
+]
+
+shift_filtered = shift_cluster_rate[
+    shift_cluster_rate["Cluster_Name"].isin(selected_clusters)
+]
 
 # -------------------------
 # KPI CALCULATIONS
 # -------------------------
-total_engines = bom_cluster_rate["Total_Engines"].sum()
-total_defects = cluster_pareto["NG_Count"].sum()
-ng_per_engine = total_defects / total_engines
+total_engines = bom_filtered["Total_Engines"].sum()
+total_defects = cluster_filtered["NG_Count"].sum()
+ng_per_engine = total_defects / total_engines if total_engines else 0
 
-assembly_pct = cluster_pareto.loc[
-    cluster_pareto["Cluster_Name"] == "Assembly Discipline", "NG_Count"
-].values[0] / total_defects
+assembly_pct = 0
+if "Assembly Discipline" in cluster_filtered["Cluster_Name"].values:
+    assembly_pct = cluster_filtered.loc[
+        cluster_filtered["Cluster_Name"] == "Assembly Discipline", "NG_Count"
+    ].values[0] / total_defects if total_defects else 0
 
 # -------------------------
 # HEADER
@@ -43,114 +88,124 @@ st.title("Assembly Quality Intelligence Dashboard")
 st.markdown("### Greaves Cotton")
 
 # -------------------------
-# KPI SECTION
+# TABS
 # -------------------------
-col1, col2, col3, col4 = st.columns(4)
+tab1, tab2 = st.tabs(["Executive View", "Detailed Analysis"])
 
-col1.metric("Total Engines", f"{total_engines}")
-col2.metric("Total Defects", f"{total_defects}")
-col3.metric("NG per Engine", f"{ng_per_engine:.2f}")
-col4.metric("Assembly Contribution", f"{assembly_pct*100:.1f}%")
+# =========================
+# TAB 1 — EXECUTIVE VIEW
+# =========================
+with tab1:
 
-# -------------------------
-# FAILURE MODE CHART
-# -------------------------
-st.subheader("Failure Mode Breakdown")
+    # KPI SECTION
+    col1, col2, col3, col4 = st.columns(4)
 
-fig1 = px.bar(
-    cluster_pareto,
-    x="NG_per_Engine",
-    y="Cluster_Name",
-    orientation="h",
-    color="Cluster_Name",
-    color_discrete_map={
-        "Assembly Discipline": ALERT_RED
-    }
-)
+    col1.metric("Total Engines", f"{total_engines:,}")
+    col2.metric("Total Defects", f"{total_defects:,}")
+    col3.metric("NG / Engine", f"{ng_per_engine:.2f}")
+    col4.metric("Assembly %", f"{assembly_pct*100:.1f}%")
 
-st.plotly_chart(fig1, use_container_width=True)
+    st.markdown("---")
 
-# -------------------------
-# BOM PERFORMANCE
-# -------------------------
-st.subheader("BOM Performance (NG per Engine)")
+    # FAILURE MODE
+    st.subheader("Failure Mode Breakdown")
 
-fig2 = px.bar(
-    bom_cluster_rate,
-    x="BOM",
-    y="NG_per_Engine",
-    color="NG_per_Engine",
-    color_continuous_scale="Reds"
-)
+    fig1 = px.bar(
+        cluster_filtered.sort_values("NG_per_Engine"),
+        x="NG_per_Engine",
+        y="Cluster_Name",
+        orientation="h",
+        color="Cluster_Name",
+        color_discrete_map={
+            "Assembly Discipline": "#D62728",
+            "Critical Fastening": "#FF7F0E",
+            "Routing & Interface": "#1F77B4",
+            "Fitment Precision": "#6C757D"
+        },
+        text=cluster_filtered["NG_per_Engine"].round(2)
+    )
 
-st.plotly_chart(fig2, use_container_width=True)
+    fig1.update_layout(showlegend=False)
+    st.plotly_chart(fig1, use_container_width=True)
 
-# -------------------------
-# HEATMAP
-# -------------------------
-st.subheader("BOM vs Failure Mode")
+    # TOP BOM ALERT
+    if not bom_filtered.empty:
+        top_bom = bom_filtered.nlargest(1, "NG_per_Engine")
+        st.warning(f"⚠️ Highest Risk BOM: {top_bom['BOM'].values[0]}")
 
-heatmap_data = bom_cluster_rate.pivot(
-    index="BOM",
-    columns="Cluster_Name",
-    values="NG_per_Engine"
-)
+    # INSIGHTS
+    st.subheader("Key Insights")
 
-fig3 = px.imshow(
-    heatmap_data,
-    text_auto=True,
-    color_continuous_scale="Reds"
-)
+    if assembly_pct > 0.7:
+        st.error("🚨 Majority defects driven by Assembly Discipline")
 
-st.plotly_chart(fig3, use_container_width=True)
+    st.info("⚠️ Critical fastening defects pose functional risk")
+    st.warning("⚙️ Model-wise variation indicates process instability")
+    st.success("📊 Shift variation indicates training gaps")
 
-# -------------------------
-# SHIFT ANALYSIS
-# -------------------------
-st.subheader("Shift Performance")
+    # ACTIONS
+    with st.expander("Recommended Actions"):
+        st.markdown("### Immediate")
+        st.write("- Enforce assembly checklist")
+        st.write("- Audit torque tools")
 
-fig4 = px.bar(
-    shift_cluster_rate,
-    x="Shift",
-    y="NG_per_Engine",
-    color="Cluster_Name",
-    barmode="group"
-)
+        st.markdown("### Short Term")
+        st.write("- Operator training")
+        st.write("- Improve SOPs")
 
-st.plotly_chart(fig4, use_container_width=True)
+        st.markdown("### Long Term")
+        st.write("- Introduce poka-yoke systems")
+        st.write("- Digital validation")
 
-# -------------------------
-# INSIGHTS (RULE ENGINE)
-# -------------------------
-st.subheader("Key Insights")
+# =========================
+# TAB 2 — DETAILED ANALYSIS
+# =========================
+with tab2:
 
-insights = []
+    st.subheader("BOM Performance")
 
-if assembly_pct > 0.7:
-    insights.append("Majority of defects are driven by lack of process control.")
+    fig2 = px.bar(
+        bom_filtered,
+        x="BOM",
+        y="NG_per_Engine",
+        color="NG_per_Engine",
+        color_continuous_scale="Reds",
+        text=bom_filtered["NG_per_Engine"].round(2)
+    )
 
-insights.append("Critical fastening defects pose high functional risk.")
-insights.append("Model-wise variation indicates process instability.")
-insights.append("Shift variation indicates training gaps.")
+    st.plotly_chart(fig2, use_container_width=True)
 
-for i in insights:
-    st.markdown(f"- {i}")
+    st.subheader("BOM vs Failure Mode Heatmap")
 
-# -------------------------
-# ACTIONS
-# -------------------------
-st.subheader("Recommended Actions")
+    heatmap_data = bom_filtered.pivot(
+        index="BOM",
+        columns="Cluster_Name",
+        values="NG_per_Engine"
+    )
 
-st.markdown("""
-**Immediate**
-- Enforce assembly checklist
-- Audit torque tools
+    fig3 = px.imshow(
+        heatmap_data,
+        text_auto=True,
+        color_continuous_scale="Reds"
+    )
 
-**Short Term**
-- Operator training
-- Improve SOPs
+    st.plotly_chart(fig3, use_container_width=True)
 
-**Long Term**
-- Introduce poka-yoke systems
-- Digital validation
-""")
+    st.subheader("Shift Performance")
+
+    fig4 = px.bar(
+        shift_filtered,
+        x="Shift",
+        y="NG_per_Engine",
+        color="Cluster_Name",
+        barmode="group"
+    )
+
+    st.plotly_chart(fig4, use_container_width=True)
+
+    # DOWNLOAD OPTION
+    st.download_button(
+        "Download Filtered Data",
+        bom_filtered.to_csv(index=False),
+        "filtered_bom_data.csv"
+    )
