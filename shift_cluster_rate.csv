@@ -1,0 +1,13 @@
+Shift,Cluster_Name,NG_Count,Total_Engines,NG_per_Engine
+Off Shift,Assembly Discipline,98,578,0.1695501730103806
+Off Shift,Critical Fastening,12,578,0.020761245674740483
+Off Shift,Fitment Precision,22,578,0.03806228373702422
+Off Shift,Routing & Interface,19,578,0.0328719723183391
+Shift 1,Assembly Discipline,1154,5514,0.20928545520493289
+Shift 1,Critical Fastening,125,5514,0.02266956837141821
+Shift 1,Fitment Precision,96,5514,0.017410228509249184
+Shift 1,Routing & Interface,101,5514,0.018317011244105914
+Shift 2,Assembly Discipline,847,4020,0.21069651741293532
+Shift 2,Critical Fastening,69,4020,0.017164179104477612
+Shift 2,Fitment Precision,26,4020,0.006467661691542288
+Shift 2,Routing & Interface,42,4020,0.010447761194029851
