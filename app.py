@@ -13,9 +13,9 @@ st.set_page_config(
 # -------------------------
 # LOAD DATA
 # -------------------------
-bom_cluster_rate = pd.read_csv("data/bom_cluster_rate.csv")
-cluster_pareto = pd.read_csv("data/cluster_pareto.csv")
-shift_cluster_rate = pd.read_csv("data/shift_cluster_rate.csv")
+bom_cluster_rate = pd.read_csv("bom_cluster_rate.csv")
+cluster_pareto = pd.read_csv("cluster_pareto.csv")
+shift_cluster_rate = pd.read_csv("shift_cluster_rate.csv")
 
 # -------------------------
 # COLORS (Greaves style)
